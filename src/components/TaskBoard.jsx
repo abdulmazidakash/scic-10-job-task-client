@@ -5,58 +5,94 @@ import { signInWithPopup, signOut } from "firebase/auth";
 import io from "socket.io-client";
 import Swal from "sweetalert2";
 import { FaTrash, FaPlus, FaEdit, FaSun, FaMoon } from "react-icons/fa";
+import LoadingSpinner from "./LoadingSpinner";
 
+// Configure Socket.io connection
 const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000", {
   withCredentials: true,
   transports: ["websocket"],
 });
 
 const TaskBoard = () => {
-  const [tasks, setTasks] = useState([]);
-  const [newTask, setNewTask] = useState({ title: "", description: "" });
-  const [editingTask, setEditingTask] = useState(null);
-  const [user, setUser] = useState(null);
-  const [darkMode, setDarkMode] = useState(false);
-  const [loading, setLoading] = useState(true);
+  // Component State
+  const [tasks, setTasks] = useState([]); // Stores all tasks
+  const [newTask, setNewTask] = useState({ title: "", description: "" }); // New task input
+  const [editingTask, setEditingTask] = useState(null); // Task being edited
+  const [user, setUser] = useState(null); // Current authenticated user
+  const [darkMode, setDarkMode] = useState(false); // Dark mode toggle
+  const [loading, setLoading] = useState(true); // Loading state
+  const [isAddingTask, setIsAddingTask] = useState(false); // Prevent duplicate task addition
 
-  // Fetch tasks for the logged-in user
+  console.log('editing task----->',editingTask);
+
+  // Fetch tasks from the backend API
   const fetchTasks = async (uid) => {
     try {
       setLoading(true);
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/tasks?uid=${uid}`);
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
-      setTasks(data.sort((a, b) => a.position - b.position));
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/tasks?uid=${uid}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setTasks(data.sort((a, b) => a.position - b.position)); // Sort tasks by position
     } catch (error) {
-      Swal.fire("Error", "Failed to load tasks", "error");
+      showError("Failed to load tasks");
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle task updates from WebSocket
-  const handleTaskUpdate = (updatedTask) => {
+  // WebSocket Event Handlers
+  const handleTaskCreated = (newTask) => {
+    setTasks((prev) => [...prev, newTask]);
+  };
+
+  const handleTaskUpdated = (updatedTask) => {
     setTasks((prev) =>
       prev.map((t) => (t._id === updatedTask._id ? updatedTask : t))
     );
   };
 
-  // Handle task deletions from WebSocket
-  const handleTaskDelete = (deletedId) => {
+  const handleTaskDeleted = (deletedId) => {
     setTasks((prev) => prev.filter((t) => t._id !== deletedId));
   };
 
-  // Handle user authentication
+  // Authentication Handlers
   const handleAuth = async () => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      setUser(result.user);
+      await initializeUser(result.user);
+      showSuccess("Logged in successfully!");
     } catch (error) {
-      Swal.fire("Error", "Authentication failed", "error");
+      showError("Authentication failed");
     }
   };
 
-  // Handle drag-and-drop
+  const initializeUser = async (user) => {
+    try {
+      // Register user in the backend
+      await fetch(`${import.meta.env.VITE_API_URL}/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uid: user.uid,
+          email: user.email,
+          name: user.displayName,
+        }),
+      });
+
+      setUser(user);
+      await fetchTasks(user.uid); // Fetch tasks for the user
+    } catch (error) {
+      showError("Failed to initialize user");
+    }
+  };
+
+  // Drag and Drop Handler
   const handleDragEnd = async (result) => {
     if (!result.destination) return;
 
@@ -67,142 +103,165 @@ const TaskBoard = () => {
       position: result.destination.index,
     };
 
-    // Reorder tasks in the source and destination categories
-    const updatedTasks = tasks.map((task) => {
-      if (
-        task.category === result.source.droppableId &&
-        task.position >= result.source.index
-      ) {
-        return { ...task, position: task.position - 1 };
-      }
-      if (
-        task.category === result.destination.droppableId &&
-        task.position >= result.destination.index
-      ) {
-        return { ...task, position: task.position + 1 };
-      }
-      return task;
-    });
-
-    setTasks(updatedTasks);
-
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/tasks/${movedTask._id}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(updatedTask),
-        }
+      // Optimistic UI update
+      setTasks((prev) =>
+        prev.map((t) => (t._id === movedTask._id ? updatedTask : t))
       );
 
-      if (!response.ok) throw new Error("Failed to update task");
+      // Persist to backend
+      await fetch(`${import.meta.env.VITE_API_URL}/tasks/${movedTask._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedTask),
+      });
+
+      // Emit WebSocket event for real-time updates
+      socket.emit("taskUpdated", updatedTask);
     } catch (error) {
-      Swal.fire("Error", error.message, "error");
-      fetchTasks(user.uid);
+      showError("Failed to save position");
+      fetchTasks(user.uid); // Revert to server state
     }
   };
 
-  // Handle task actions (add, edit, delete)
-  const handleTaskAction = async (action, task = null) => {
+  // Task CRUD Operations
+  const handleAddTask = async () => {
+    if (isAddingTask) return; // Prevent duplicate task addition
+    setIsAddingTask(true);
+
     try {
-      if (action === "add") {
-        if (!newTask.title.trim()) throw new Error("Title is required");
-        if (newTask.title.length > 50)
-          throw new Error("Title must be less than 50 characters");
+      if (!newTask.title.trim()) throw new Error("Title is required");
 
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/tasks`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...newTask,
-            uid: user.uid,
-            category: "To-Do",
-            position: tasks.filter((t) => t.category === "To-Do").length,
-          }),
-        });
+      const taskData = {
+        ...newTask,
+        uid: user.uid,
+        category: "To-Do",
+        position: tasks.filter((t) => t.category === "To-Do").length,
+      };
 
-        if (!response.ok) throw new Error("Failed to create task");
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(taskData),
+      });
 
-        setNewTask({ title: "", description: "" });
-        Swal.fire("Success", "Task added!", "success");
-      }
+      if (!response.ok) throw new Error("Failed to create task");
 
-      if (action === "delete") {
+      const createdTask = await response.json();
+
+      setNewTask({ title: "", description: "" });
+
+      // Emit WebSocket event for real-time updates
+      socket.emit("taskCreated", createdTask);
+
+      // Optimistic UI update
+      setTasks((prev) => [...prev, createdTask]);
+
+      showSuccess("Task added successfully!");
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setIsAddingTask(false); // Re-enable the "Add" button
+    }
+  };
+
+  const handleDeleteTask = async (taskId) => {
+    const result = await Swal.fire({
+      title: "Are you sure?",
+      text: "You won't be able to revert this!",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#3085d6",
+      cancelButtonColor: "#d33",
+      confirmButtonText: "Delete",
+    });
+
+    if (result.isConfirmed) {
+      try {
         const response = await fetch(
-          `${import.meta.env.VITE_API_URL}/tasks/${task._id}`,
-          {
-            method: "DELETE",
-          }
+          `${import.meta.env.VITE_API_URL}/tasks/${taskId}`,
+          { method: "DELETE" }
         );
 
         if (!response.ok) throw new Error("Failed to delete task");
-        Swal.fire("Deleted!", "Task removed", "success");
+
+        // Emit WebSocket event for real-time updates
+        socket.emit("taskDeleted", taskId);
+
+        // Optimistic UI update
+        setTasks((prev) => prev.filter((t) => t._id !== taskId));
+
+        showSuccess("Task deleted successfully!");
+      } catch (error) {
+        showError(error.message);
       }
-
-      if (action === "edit") {
-        const response = await fetch(
-          `${import.meta.env.VITE_API_URL}/tasks/${editingTask._id}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(editingTask),
-          }
-        );
-
-        if (!response.ok) throw new Error("Failed to update task");
-
-        setEditingTask(null);
-        Swal.fire("Updated!", "Task modified", "success");
-      }
-    } catch (error) {
-      Swal.fire("Error", error.message, "error");
     }
   };
-
-  // Listen for authentication state changes
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
-      setUser(user);
-      if (user) {
-        try {
-          await fetch(`${import.meta.env.VITE_API_URL}/users`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              uid: user.uid,
-              email: user.email,
-              name: user.displayName,
-            }),
-          });
-          await fetchTasks(user.uid);
-        } catch (error) {
-          Swal.fire("Error", "Failed to initialize user", "error");
+  
+  const handleEditTask = async () => {
+    try {
+      // `_id` remove
+      const { _id, ...taskData } = editingTask;
+  
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/tasks/${_id}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(taskData), // `_id` remove
         }
-      }
-      setLoading(false);
+      );
+  
+      if (!response.ok) throw new Error("Failed to update task");
+  
+      const updatedTask = await response.json();
+  
+      setEditingTask(null);
+  
+      // Emit WebSocket event for real-time updates
+      socket.emit("taskUpdated", updatedTask);
+  
+      // Optimistic UI update
+      setTasks((prev) =>
+        prev.map((t) => (t._id === updatedTask._id ? updatedTask : t))
+      );
+  
+      showSuccess("Task updated successfully!");
+    } catch (error) {
+      showError(error.message);
+    }
+  };
+  
+
+  // Effect Hooks
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      setUser(user);
+      if (user) fetchTasks(user.uid);
     });
 
-    // Listen for WebSocket events
-    socket.on("taskUpdated", handleTaskUpdate);
-    socket.on("taskDeleted", handleTaskDelete);
+    // WebSocket listeners
+    socket.on("taskCreated", handleTaskCreated);
+    socket.on("taskUpdated", handleTaskUpdated);
+    
+    socket.on("taskDeleted", handleTaskDeleted);
 
     return () => {
       unsubscribe();
+      socket.off("taskCreated");
       socket.off("taskUpdated");
       socket.off("taskDeleted");
       socket.disconnect();
     };
   }, []);
 
-  // Apply dark mode to the root element
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+    document.documentElement.classList.toggle("dark", darkMode);
   }, [darkMode]);
+
+  // Helper Functions
+  const showError = (message) => Swal.fire("Error", message, "error");
+  const showSuccess = (message) => Swal.fire("Success", message, "success");
 
   return (
     <div
@@ -246,16 +305,15 @@ const TaskBoard = () => {
           <div className="mb-6 flex gap-2">
             <input
               value={newTask.title}
-              onChange={(e) =>
-                setNewTask({ ...newTask, title: e.target.value })
-              }
+              onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
               placeholder="New task"
               className="flex-1 p-2 rounded-lg border"
               maxLength={50}
             />
             <button
-              onClick={() => handleTaskAction("add")}
-              className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600"
+              onClick={handleAddTask}
+              disabled={isAddingTask}
+              className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 disabled:opacity-50"
             >
               <FaPlus />
             </button>
@@ -264,7 +322,8 @@ const TaskBoard = () => {
 
         {/* Loading State */}
         {loading && (
-          <div className="text-center py-4 text-gray-500">Loading tasks...</div>
+          // <div className="text-center py-4 text-gray-500">Loading tasks...</div>
+          <LoadingSpinner/>
         )}
 
         {/* Task Board */}
@@ -302,9 +361,9 @@ const TaskBoard = () => {
                               >
                                 <div className="flex justify-between items-center">
                                   <div>
-                                    <h3 className="font-medium">
-                                      {task.title}
-                                    </h3>
+                                   
+                                    <h3 className="font-medium badge badge-info">Task: {index + 1}</h3>
+                                    <h3 className="font-medium">{task.title}</h3>
                                     {task.description && (
                                       <p className="text-sm opacity-75 mt-1">
                                         {task.description}
@@ -319,9 +378,7 @@ const TaskBoard = () => {
                                       <FaEdit />
                                     </button>
                                     <button
-                                      onClick={() =>
-                                        handleTaskAction("delete", task)
-                                      }
+                                      onClick={() => handleDeleteTask(task._id)}
                                       className="text-red-500 hover:text-red-600"
                                     >
                                       <FaTrash />
@@ -373,7 +430,7 @@ const TaskBoard = () => {
               />
               <div className="flex gap-2">
                 <button
-                  onClick={() => handleTaskAction("edit")}
+                  onClick={handleEditTask}
                   className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
                 >
                   Save

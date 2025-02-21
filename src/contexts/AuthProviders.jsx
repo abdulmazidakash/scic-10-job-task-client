@@ -1,3 +1,5 @@
+/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable react/prop-types */
 import { createContext, useEffect, useState } from 'react';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase/firebase';
@@ -11,7 +13,7 @@ const AuthProvider = ({ children }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-      console.log(`current user---> ${currentUser?.displayName}`); // Fixed logging
+      console.log(`current user---> ${currentUser?.displayName}`); 
       if (currentUser) {
         await fetch('http://localhost:5000/users', {
           method: 'POST',
