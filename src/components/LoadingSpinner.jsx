@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { PuffLoader } from "react-spinners";
 
 const LoadingSpinner = ({ loading = true, size = 50, color = "#3498db" }) => {

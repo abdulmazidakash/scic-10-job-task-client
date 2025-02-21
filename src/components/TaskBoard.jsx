@@ -1,11 +1,16 @@
-import { useEffect, useState } from "react";
+/* eslint-disable no-unused-vars */
+import { useContext, useEffect, useState } from "react";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import { auth, googleProvider } from "../firebase/firebase";
 import { signInWithPopup, signOut } from "firebase/auth";
 import io from "socket.io-client";
 import Swal from "sweetalert2";
-import { FaTrash, FaPlus, FaEdit, FaSun, FaMoon } from "react-icons/fa";
+import { FaTrash, FaEdit} from "react-icons/fa";
 import LoadingSpinner from "./LoadingSpinner";
+import Header from "./Header";
+import TaskInput from "./TaskInput";
+import EditModal from "./EditModal";
+import { ThemeContext } from "../contexts/ThemeContext";
 
 // Configure Socket.io connection
 const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000", {
@@ -19,11 +24,9 @@ const TaskBoard = () => {
   const [newTask, setNewTask] = useState({ title: "", description: "" }); // New task input
   const [editingTask, setEditingTask] = useState(null); // Task being edited
   const [user, setUser] = useState(null); // Current authenticated user
-  const [darkMode, setDarkMode] = useState(false); // Dark mode toggle
+  const { darkMode, setDarkMode } = useContext(ThemeContext); // Use Theme Context Dark mode toggle
   const [loading, setLoading] = useState(true); // Loading state
   const [isAddingTask, setIsAddingTask] = useState(false); // Prevent duplicate task addition
-
-  console.log('editing task----->',editingTask);
 
   // Fetch tasks from the backend API
   const fetchTasks = async (uid) => {
@@ -66,7 +69,7 @@ const TaskBoard = () => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       await initializeUser(result.user);
-      showSuccess("Logged in successfully!");
+      showSuccess(`Logged in successfully! ${result?.user?.displayName}`);
     } catch (error) {
       showError("Authentication failed");
     }
@@ -197,7 +200,7 @@ const TaskBoard = () => {
       }
     }
   };
-  
+
   const handleEditTask = async () => {
     try {
       // `_id` remove
@@ -255,10 +258,6 @@ const TaskBoard = () => {
     };
   }, []);
 
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", darkMode);
-  }, [darkMode]);
-
   // Helper Functions
   const showError = (message) => Swal.fire("Error", message, "error");
   const showSuccess = (message) => Swal.fire("Success", message, "success");
@@ -270,61 +269,30 @@ const TaskBoard = () => {
       }`}
     >
       <div className="max-w-6xl mx-auto">
-        {/* Header Section */}
-        <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
-          <h1 className="text-2xl font-bold">Task Manager</h1>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className={`p-2 rounded-lg ${
-                darkMode ? "bg-gray-700" : "bg-gray-200"
-              }`}
-            >
-              {darkMode ? <FaSun /> : <FaMoon />}
-            </button>
-            {user ? (
-              <button
-                onClick={() => signOut(auth)}
-                className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600"
-              >
-                Logout
-              </button>
-            ) : (
-              <button
-                onClick={handleAuth}
-                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
-              >
-                Login with Google
-              </button>
-            )}
-          </div>
-        </div>
 
-        {/* Task Input */}
-        {user && (
-          <div className="mb-6 flex gap-2">
-            <input
-              value={newTask.title}
-              onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-              placeholder="New task"
-              className="flex-1 p-2 rounded-lg border"
-              maxLength={50}
-            />
-            <button
-              onClick={handleAddTask}
-              disabled={isAddingTask}
-              className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 disabled:opacity-50"
-            >
-              <FaPlus />
-            </button>
-          </div>
-        )}
+        {/* Header Section components */}
 
-        {/* Loading State */}
-        {loading && (
-          // <div className="text-center py-4 text-gray-500">Loading tasks...</div>
-          <LoadingSpinner/>
-        )}
+        <Header 
+          user={user} 
+          handleAuth={handleAuth} 
+          signOut={signOut} 
+          darkMode={darkMode} 
+          setDarkMode={setDarkMode} 
+        />
+
+        {/* Task Input section components */}
+
+        <TaskInput 
+          user={user} 
+          newTask={newTask} 
+          setNewTask={setNewTask} 
+          isAddingTask={isAddingTask} 
+          handleAddTask={handleAddTask} 
+        />
+
+        {/* Loading State components */}
+
+        {loading && ( <LoadingSpinner/>)}
 
         {/* Task Board */}
         {!loading && (
@@ -398,53 +366,14 @@ const TaskBoard = () => {
           </DragDropContext>
         )}
 
-        {/* Edit Modal */}
-        {editingTask && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-            <div
-              className={`p-6 rounded-lg ${
-                darkMode ? "bg-gray-800" : "bg-white"
-              } w-96`}
-            >
-              <h2 className="text-xl font-bold mb-4">Edit Task</h2>
-              <input
-                value={editingTask.title}
-                onChange={(e) =>
-                  setEditingTask({ ...editingTask, title: e.target.value })
-                }
-                className="w-full p-2 mb-4 border rounded"
-                maxLength={50}
-              />
-              <textarea
-                value={editingTask.description}
-                onChange={(e) =>
-                  setEditingTask({
-                    ...editingTask,
-                    description: e.target.value,
-                  })
-                }
-                className="w-full p-2 mb-4 border rounded"
-                placeholder="Description"
-                maxLength={200}
-                rows="3"
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={handleEditTask}
-                  className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={() => setEditingTask(null)}
-                  className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Edit Modal components */}     
+        <EditModal 
+        editingTask={editingTask} 
+        darkMode={darkMode}
+        setEditingTask={setEditingTask} 
+        handleEditTask={handleEditTask}
+        />
+
       </div>
     </div>
   );
