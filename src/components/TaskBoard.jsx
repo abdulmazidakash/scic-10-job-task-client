@@ -345,10 +345,10 @@ const TaskBoard = () => {
 
         {/* Loading State components */}
 
-        {loading && ( <LoadingSpinner/>)}
+        {/* {loading && ( <LoadingSpinner/>)} */}
 
         {/* Task Board */}
-        {!loading && (
+        {user && (
           <DragDropContext onDragEnd={handleDragEnd}>
             <div className="grid gap-4 md:grid-cols-3">
               {["To-Do", "In Progress", "Done"].map((category) => (
@@ -362,7 +362,7 @@ const TaskBoard = () => {
                       }`}
                     >
                       <h2 className="text-lg font-semibold mb-4">{category}</h2>
-                      {tasks
+                      {user && tasks
                         .filter((task) => task.category === category)
                         .sort((a, b) => a.position - b.position)
                         .map((task, index) => (
