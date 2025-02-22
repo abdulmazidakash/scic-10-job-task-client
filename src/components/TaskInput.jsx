@@ -3,9 +3,10 @@ import { FaPlus } from "react-icons/fa";
 
 
 const TaskInput = ({user, newTask, setNewTask, isAddingTask, handleAddTask}) => {
-	
+
 	return (
 		<div>
+			<h2 className="font-semibold mb-2">Name: {user? `${user?.displayName}` : `not available user`}</h2>
 			{user && (
 					  <div className="mb-6 flex gap-2">
 						<input

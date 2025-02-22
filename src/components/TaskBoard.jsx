@@ -13,7 +13,7 @@ import EditModal from "./EditModal";
 import { ThemeContext } from "../contexts/ThemeContext";
 
 // Configure Socket.io connection
-const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000", {
+const socket = io(import.meta.env.VITE_API_URL || "https://scic-10-job-task-server.onrender.com", {
   withCredentials: true,
   transports: ["websocket"],
 });
@@ -128,45 +128,96 @@ const TaskBoard = () => {
   };
 
   // Task CRUD Operations
+  // const handleAddTask = async () => {
+  //   if (isAddingTask) return; // Prevent duplicate task addition
+  //   setIsAddingTask(true);
+
+  //   try {
+  //     if (!newTask.title.trim()) throw new Error("Title is required");
+
+  //     const taskData = {
+  //       ...newTask,
+  //       uid: user.uid,
+  //       category: "To-Do",
+  //       position: tasks.filter((t) => t.category === "To-Do").length,
+  //     };
+
+  //     const response = await fetch(`${import.meta.env.VITE_API_URL}/tasks`, {
+  //       method: "POST",
+  //       headers: { "Content-Type": "application/json" },
+  //       body: JSON.stringify(taskData),
+  //     });
+
+  //     if (!response.ok) throw new Error("Failed to create task");
+
+  //     const createdTask = await response.json();
+
+  //     setNewTask({ title: "", description: "" });
+
+  //     // Emit WebSocket event for real-time updates
+  //     socket.emit("taskCreated", createdTask);
+
+  //     // Optimistic UI update
+  //     setTasks((prev) => [...prev, createdTask]);
+
+  //     showSuccess("Task added successfully!");
+  //   } catch (error) {
+  //     showError(error.message);
+  //   } finally {
+  //     setIsAddingTask(false); // Re-enable the "Add" button
+  //   }
+  // };
+
   const handleAddTask = async () => {
     if (isAddingTask) return; // Prevent duplicate task addition
     setIsAddingTask(true);
-
+  
     try {
-      if (!newTask.title.trim()) throw new Error("Title is required");
-
+      const trimmedTitle = newTask.title.trim();
+      if (!trimmedTitle) throw new Error("Title is required");
+  
+      // Check if a task with the same title already exists (Optimistic Check)
+      const existingTask = tasks.find((task) => task.title === trimmedTitle);
+      if (existingTask) {
+        throw new Error("A task with this title already exists!");
+      }
+  
       const taskData = {
         ...newTask,
         uid: user.uid,
         category: "To-Do",
         position: tasks.filter((t) => t.category === "To-Do").length,
       };
-
+  
       const response = await fetch(`${import.meta.env.VITE_API_URL}/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(taskData),
       });
-
+  
       if (!response.ok) throw new Error("Failed to create task");
-
+  
       const createdTask = await response.json();
-
       setNewTask({ title: "", description: "" });
-
-      // Emit WebSocket event for real-time updates
+  
+      // WebSocket event emit only if the task was successfully created
       socket.emit("taskCreated", createdTask);
-
-      // Optimistic UI update
-      setTasks((prev) => [...prev, createdTask]);
-
+  
+      // Optimistic UI update (Check Again to Avoid Duplicates)
+      setTasks((prev) =>
+        prev.some((task) => task._id === createdTask._id)
+          ? prev
+          : [...prev, createdTask]
+      );
+  
       showSuccess("Task added successfully!");
     } catch (error) {
       showError(error.message);
     } finally {
-      setIsAddingTask(false); // Re-enable the "Add" button
+      setIsAddingTask(false);
     }
   };
+  
 
   const handleDeleteTask = async (taskId) => {
     const result = await Swal.fire({
