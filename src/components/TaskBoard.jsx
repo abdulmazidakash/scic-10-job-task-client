@@ -129,47 +129,6 @@ const TaskBoard = () => {
     }
   };
 
-  // Task CRUD Operations
-  // const handleAddTask = async () => {
-  //   if (isAddingTask) return; // Prevent duplicate task addition
-  //   setIsAddingTask(true);
-
-  //   try {
-  //     if (!newTask.title.trim()) throw new Error("Title is required");
-
-  //     const taskData = {
-  //       ...newTask,
-  //       uid: user.uid,
-  //       category: "To-Do",
-  //       position: tasks.filter((t) => t.category === "To-Do").length,
-  //     };
-
-  //     const response = await fetch(`${import.meta.env.VITE_API_URL}/tasks`, {
-  //       method: "POST",
-  //       headers: { "Content-Type": "application/json" },
-  //       body: JSON.stringify(taskData),
-  //     });
-
-  //     if (!response.ok) throw new Error("Failed to create task");
-
-  //     const createdTask = await response.json();
-
-  //     setNewTask({ title: "", description: "" });
-
-  //     // Emit WebSocket event for real-time updates
-  //     socket.emit("taskCreated", createdTask);
-
-  //     // Optimistic UI update
-  //     setTasks((prev) => [...prev, createdTask]);
-
-  //     showSuccess("Task added successfully!");
-  //   } catch (error) {
-  //     showError(error.message);
-  //   } finally {
-  //     setIsAddingTask(false); // Re-enable the "Add" button
-  //   }
-  // };
-
   const handleAddTask = async () => {
     if (isAddingTask) return; // Prevent duplicate task addition
     setIsAddingTask(true);
@@ -315,6 +274,10 @@ const TaskBoard = () => {
   const showError = (message) => Swal.fire("Error", message, "error");
   const showSuccess = (message) => Swal.fire("Success", message, "success");
 
+  if(loading){
+    <LoadingSpinner/>
+  }
+
   return (
     <div
       className={`min-h-screen p-4 transition-colors ${
@@ -362,7 +325,7 @@ const TaskBoard = () => {
                       }`}
                     >
                       <h2 className="text-lg font-semibold mb-4">{category}</h2>
-                      {user && tasks
+                      {tasks
                         .filter((task) => task.category === category)
                         .sort((a, b) => a.position - b.position)
                         .map((task, index) => (
