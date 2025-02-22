@@ -28,6 +28,8 @@ const TaskBoard = () => {
   const [loading, setLoading] = useState(true); // Loading state
   const [isAddingTask, setIsAddingTask] = useState(false); // Prevent duplicate task addition
 
+  console.log(tasks);
+
   // Fetch tasks from the backend API
   const fetchTasks = async (uid) => {
     try {
@@ -382,7 +384,10 @@ const TaskBoard = () => {
                                   <div>
                                    
                                     <h3 className="font-medium badge badge-info">Task: {index + 1}</h3>
-                                    <h3 className="font-medium">{task.title}</h3>
+                                    <h3 className="font-medium">Title: {task.title}</h3>
+                                    <h3 className="">
+                                     Date: {new Date(task.createdAt).toLocaleDateString()}
+                                    </h3>
                                     {task.description && (
                                       <p className="text-sm opacity-75 mt-1">
                                         {task.description}
