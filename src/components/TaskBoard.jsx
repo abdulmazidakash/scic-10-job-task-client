@@ -383,7 +383,7 @@ const TaskBoard = () => {
                                 <div className="flex justify-between items-center">
                                   <div>
                                    
-                                    <h3 className="font-medium badge badge-info">Task: {index + 1}</h3>
+                                    <h3 className="font-medium badge badge-success">Task: {index + 1}</h3>
                                     <h3 className="font-medium">Title: {task.title}</h3>
                                     <h3 className="">
                                      Date: {new Date(task.createdAt).toLocaleDateString()}
